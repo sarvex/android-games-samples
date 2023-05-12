@@ -132,90 +132,84 @@ class _Printer(object):
     return self._RegularMessageToJsonObject(message, js)
 
   def _RegularMessageToJsonObject(self, message, js):
-    """Converts normal message according to Proto3 JSON Specification."""
-    fields = message.ListFields()
+      """Converts normal message according to Proto3 JSON Specification."""
+      fields = message.ListFields()
 
-    try:
-      for field, value in fields:
-        name = field.camelcase_name
-        if _IsMapEntry(field):
-          # Convert a map field.
-          v_field = field.message_type.fields_by_name['value']
-          js_map = {}
-          for key in value:
-            if isinstance(key, bool):
-              if key:
-                recorded_key = 'true'
+      try:
+          for field, value in fields:
+              name = field.camelcase_name
+              if _IsMapEntry(field):
+                  # Convert a map field.
+                  v_field = field.message_type.fields_by_name['value']
+                  js_map = {}
+                  for key in value:
+                      if isinstance(key, bool):
+                          recorded_key = 'true' if key else 'false'
+                      else:
+                          recorded_key = key
+                      js_map[recorded_key] = self._FieldToJsonObject(
+                          v_field, value[key])
+                  js[name] = js_map
+              elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
+                # Convert a repeated field.
+                js[name] = [self._FieldToJsonObject(field, k)
+                            for k in value]
               else:
-                recorded_key = 'false'
-            else:
-              recorded_key = key
-            js_map[recorded_key] = self._FieldToJsonObject(
-                v_field, value[key])
-          js[name] = js_map
-        elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
-          # Convert a repeated field.
-          js[name] = [self._FieldToJsonObject(field, k)
-                      for k in value]
-        else:
-          js[name] = self._FieldToJsonObject(field, value)
+                  js[name] = self._FieldToJsonObject(field, value)
 
-      # Serialize default value if including_default_value_fields is True.
-      if self.including_default_value_fields:
-        message_descriptor = message.DESCRIPTOR
-        for field in message_descriptor.fields:
-          # Singular message fields and oneof fields will not be affected.
-          if ((field.label != descriptor.FieldDescriptor.LABEL_REPEATED and
-               field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE) or
-              field.containing_oneof):
-            continue
-          name = field.camelcase_name
-          if name in js:
-            # Skip the field which has been serailized already.
-            continue
-          if _IsMapEntry(field):
-            js[name] = {}
-          elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
-            js[name] = []
-          else:
-            js[name] = self._FieldToJsonObject(field, field.default_value)
+          # Serialize default value if including_default_value_fields is True.
+          if self.including_default_value_fields:
+            message_descriptor = message.DESCRIPTOR
+            for field in message_descriptor.fields:
+              # Singular message fields and oneof fields will not be affected.
+              if ((field.label != descriptor.FieldDescriptor.LABEL_REPEATED and
+                   field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE) or
+                  field.containing_oneof):
+                continue
+              name = field.camelcase_name
+              if name in js:
+                # Skip the field which has been serailized already.
+                continue
+              if _IsMapEntry(field):
+                js[name] = {}
+              elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
+                js[name] = []
+              else:
+                js[name] = self._FieldToJsonObject(field, field.default_value)
 
-    except ValueError as e:
-      raise SerializeToJsonError(
-          'Failed to serialize {0} field: {1}.'.format(field.name, e))
+      except ValueError as e:
+        raise SerializeToJsonError(
+            'Failed to serialize {0} field: {1}.'.format(field.name, e))
 
-    return js
+      return js
 
   def _FieldToJsonObject(self, field, value):
-    """Converts field value according to Proto3 JSON Specification."""
-    if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
-      return self._MessageToJsonObject(value)
-    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_ENUM:
-      enum_value = field.enum_type.values_by_number.get(value, None)
-      if enum_value is not None:
-        return enum_value.name
-      else:
-        raise SerializeToJsonError('Enum field contains an integer value '
-                                   'which can not mapped to an enum value.')
-    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
-      if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
-        # Use base64 Data encoding for bytes
-        return base64.b64encode(value).decode('utf-8')
-      else:
-        return value
-    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_BOOL:
-      return bool(value)
-    elif field.cpp_type in _INT64_TYPES:
-      return str(value)
-    elif field.cpp_type in _FLOAT_TYPES:
-      if math.isinf(value):
-        if value < 0.0:
-          return _NEG_INFINITY
+      """Converts field value according to Proto3 JSON Specification."""
+      if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
+          return self._MessageToJsonObject(value)
+      elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_ENUM:
+        enum_value = field.enum_type.values_by_number.get(value, None)
+        if enum_value is not None:
+          return enum_value.name
         else:
-          return _INFINITY
-      if math.isnan(value):
-        return _NAN
-    return value
+          raise SerializeToJsonError('Enum field contains an integer value '
+                                     'which can not mapped to an enum value.')
+      elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
+        if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
+          # Use base64 Data encoding for bytes
+          return base64.b64encode(value).decode('utf-8')
+        else:
+          return value
+      elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_BOOL:
+        return bool(value)
+      elif field.cpp_type in _INT64_TYPES:
+        return str(value)
+      elif field.cpp_type in _FLOAT_TYPES:
+          if math.isinf(value):
+              return _NEG_INFINITY if value < 0.0 else _INFINITY
+          if math.isnan(value):
+            return _NAN
+      return value
 
   def _AnyMessageToJsonObject(self, message):
     """Converts Any message according to Proto3 JSON Specification."""
@@ -266,12 +260,9 @@ class _Printer(object):
             for value in message.values]
 
   def _StructMessageToJsonObject(self, message):
-    """Converts Struct message according to Proto3 JSON Specification."""
-    fields = message.fields
-    ret = {}
-    for key in fields:
-      ret[key] = self._ValueMessageToJsonObject(fields[key])
-    return ret
+      """Converts Struct message according to Proto3 JSON Specification."""
+      fields = message.fields
+      return {key: self._ValueMessageToJsonObject(fields[key]) for key in fields}
 
   def _WrapperMessageToJsonObject(self, message):
     return self._FieldToJsonObject(
@@ -363,7 +354,7 @@ class _Parser(object):
       self._ConvertFieldValuePair(value, message)
 
   def _ConvertFieldValuePair(self, js, message):
-    """Convert field value pairs into regular message.
+      """Convert field value pairs into regular message.
 
     Args:
       js: A JSON object to convert the field value pairs.
@@ -372,77 +363,75 @@ class _Parser(object):
     Raises:
       ParseError: In case of problems converting.
     """
-    names = []
-    message_descriptor = message.DESCRIPTOR
-    for name in js:
-      try:
-        field = message_descriptor.fields_by_camelcase_name.get(name, None)
-        if not field:
-          if self.ignore_unknown_fields:
-            continue
-          raise ParseError(
-              'Message type "{0}" has no field named "{1}".'.format(
-                  message_descriptor.full_name, name))
-        if name in names:
-          raise ParseError('Message type "{0}" should not have multiple '
-                           '"{1}" fields.'.format(
-                               message.DESCRIPTOR.full_name, name))
-        names.append(name)
-        # Check no other oneof field is parsed.
-        if field.containing_oneof is not None:
-          oneof_name = field.containing_oneof.name
-          if oneof_name in names:
-            raise ParseError('Message type "{0}" should not have multiple '
-                             '"{1}" oneof fields.'.format(
-                                 message.DESCRIPTOR.full_name, oneof_name))
-          names.append(oneof_name)
+      names = []
+      message_descriptor = message.DESCRIPTOR
+      for name in js:
+          try:
+              field = message_descriptor.fields_by_camelcase_name.get(name, None)
+              if not field:
+                if self.ignore_unknown_fields:
+                  continue
+                raise ParseError(
+                    'Message type "{0}" has no field named "{1}".'.format(
+                        message_descriptor.full_name, name))
+              if name in names:
+                raise ParseError('Message type "{0}" should not have multiple '
+                                 '"{1}" fields.'.format(
+                                     message.DESCRIPTOR.full_name, name))
+              names.append(name)
+              # Check no other oneof field is parsed.
+              if field.containing_oneof is not None:
+                oneof_name = field.containing_oneof.name
+                if oneof_name in names:
+                  raise ParseError('Message type "{0}" should not have multiple '
+                                   '"{1}" oneof fields.'.format(
+                                       message.DESCRIPTOR.full_name, oneof_name))
+                names.append(oneof_name)
 
-        value = js[name]
-        if value is None:
-          message.ClearField(field.name)
-          continue
+              value = js[name]
+              if value is None:
+                message.ClearField(field.name)
+                continue
 
-        # Parse field value.
-        if _IsMapEntry(field):
-          message.ClearField(field.name)
-          self._ConvertMapFieldValue(value, message, field)
-        elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
-          message.ClearField(field.name)
-          if not isinstance(value, list):
-            raise ParseError('repeated field {0} must be in [] which is '
-                             '{1}.'.format(name, value))
-          if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
-            # Repeated message field.
-            for item in value:
-              sub_message = getattr(message, field.name).add()
-              # None is a null_value in Value.
-              if (item is None and
-                  sub_message.DESCRIPTOR.full_name != 'google.protobuf.Value'):
-                raise ParseError('null is not allowed to be used as an element'
-                                 ' in a repeated field.')
-              self.ConvertMessage(item, sub_message)
-          else:
-            # Repeated scalar field.
-            for item in value:
-              if item is None:
-                raise ParseError('null is not allowed to be used as an element'
-                                 ' in a repeated field.')
-              getattr(message, field.name).append(
-                  _ConvertScalarFieldValue(item, field))
-        elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
-          sub_message = getattr(message, field.name)
-          self.ConvertMessage(value, sub_message)
-        else:
-          setattr(message, field.name, _ConvertScalarFieldValue(value, field))
-      except ParseError as e:
-        if field and field.containing_oneof is None:
-          raise ParseError('Failed to parse {0} field: {1}'.format(name, e))
-        else:
-          raise ParseError(str(e))
-      except ValueError as e:
-        raise ParseError('Failed to parse {0} field: {1}.'.format(name, e))
-      except TypeError as e:
-        raise ParseError('Failed to parse {0} field: {1}.'.format(name, e))
+              # Parse field value.
+              if _IsMapEntry(field):
+                message.ClearField(field.name)
+                self._ConvertMapFieldValue(value, message, field)
+              elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
+                message.ClearField(field.name)
+                if not isinstance(value, list):
+                  raise ParseError('repeated field {0} must be in [] which is '
+                                   '{1}.'.format(name, value))
+                if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
+                  # Repeated message field.
+                  for item in value:
+                    sub_message = getattr(message, field.name).add()
+                    # None is a null_value in Value.
+                    if (item is None and
+                        sub_message.DESCRIPTOR.full_name != 'google.protobuf.Value'):
+                      raise ParseError('null is not allowed to be used as an element'
+                                       ' in a repeated field.')
+                    self.ConvertMessage(item, sub_message)
+                else:
+                  # Repeated scalar field.
+                  for item in value:
+                    if item is None:
+                      raise ParseError('null is not allowed to be used as an element'
+                                       ' in a repeated field.')
+                    getattr(message, field.name).append(
+                        _ConvertScalarFieldValue(item, field))
+              elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
+                sub_message = getattr(message, field.name)
+                self.ConvertMessage(value, sub_message)
+              else:
+                setattr(message, field.name, _ConvertScalarFieldValue(value, field))
+          except ParseError as e:
+            if field and field.containing_oneof is None:
+              raise ParseError('Failed to parse {0} field: {1}'.format(name, e))
+            else:
+              raise ParseError(str(e))
+          except (ValueError, TypeError) as e:
+              raise ParseError('Failed to parse {0} field: {1}.'.format(name, e))
 
   def _ConvertAnyMessage(self, value, message):
     """Convert a JSON representation into Any message."""
@@ -542,7 +531,7 @@ class _Parser(object):
 
 
 def _ConvertScalarFieldValue(value, field, require_str=False):
-  """Convert a single scalar field value.
+    """Convert a single scalar field value.
 
   Args:
     value: A scalar value to convert the scalar field value.
@@ -555,30 +544,29 @@ def _ConvertScalarFieldValue(value, field, require_str=False):
   Raises:
     ParseError: In case of convert problems.
   """
-  if field.cpp_type in _INT_TYPES:
-    return _ConvertInteger(value)
-  elif field.cpp_type in _FLOAT_TYPES:
-    return _ConvertFloat(value)
-  elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_BOOL:
-    return _ConvertBool(value, require_str)
-  elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
-    if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
-      return base64.b64decode(value)
-    else:
-      # Checking for unpaired surrogates appears to be unreliable,
-      # depending on the specific Python version, so we check manually.
-      if _UNPAIRED_SURROGATE_PATTERN.search(value):
-        raise ParseError('Unpaired surrogate')
-      return value
-  elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_ENUM:
-    # Convert an enum value.
-    enum_value = field.enum_type.values_by_name.get(value, None)
-    if enum_value is None:
-      raise ParseError(
-          'Enum value must be a string literal with double quotes. '
-          'Type "{0}" has no value named {1}.'.format(
-              field.enum_type.full_name, value))
-    return enum_value.number
+    if field.cpp_type in _INT_TYPES:
+        return _ConvertInteger(value)
+    elif field.cpp_type in _FLOAT_TYPES:
+      return _ConvertFloat(value)
+    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_BOOL:
+      return _ConvertBool(value, require_str)
+    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
+        if field.type == descriptor.FieldDescriptor.TYPE_BYTES:
+            return base64.b64decode(value)
+        # Checking for unpaired surrogates appears to be unreliable,
+        # depending on the specific Python version, so we check manually.
+        if _UNPAIRED_SURROGATE_PATTERN.search(value):
+          raise ParseError('Unpaired surrogate')
+        return value
+    elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_ENUM:
+      # Convert an enum value.
+      enum_value = field.enum_type.values_by_name.get(value, None)
+      if enum_value is None:
+        raise ParseError(
+            'Enum value must be a string literal with double quotes. '
+            'Type "{0}" has no value named {1}.'.format(
+                field.enum_type.full_name, value))
+      return enum_value.number
 
 
 def _ConvertInteger(value):

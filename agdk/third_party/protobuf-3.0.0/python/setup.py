@@ -59,7 +59,7 @@ def generate_proto(source, require = True):
   if (not os.path.exists(output) or
       (os.path.exists(source) and
        os.path.getmtime(source) > os.path.getmtime(output))):
-    print("Generating %s..." % output)
+    print(f"Generating {output}...")
 
     if not os.path.exists(source):
       sys.stderr.write("Can't find required file: %s\n" % source)
@@ -142,7 +142,7 @@ class build_py(_build_py):
     # Make sure google.protobuf/** are valid packages.
     for path in ['', 'internal/', 'compiler/', 'pyext/', 'util/']:
       try:
-        open('google/protobuf/%s__init__.py' % path, 'a').close()
+        open(f'google/protobuf/{path}__init__.py', 'a').close()
       except EnvironmentError:
         pass
     # _build_py is an old-style class, so super() doesn't work.
@@ -155,7 +155,7 @@ class test_conformance(_build_py):
       # Python 2.6 dodges these extra failures.
       os.environ["CONFORMANCE_PYTHON_EXTRA_FAILURES"] = (
           "--failure_list failure_list_python-post26.txt")
-    cmd = 'cd ../conformance && make %s' % (test_conformance.target)
+    cmd = f'cd ../conformance && make {test_conformance.target}'
     status = subprocess.check_call(cmd, shell=True)
 
 
@@ -214,9 +214,7 @@ if __name__ == '__main__':
   # Keep this list of dependencies in sync with tox.ini.
   install_requires = ['six>=1.9', 'setuptools']
   if sys.version_info <= (2,7):
-    install_requires.append('ordereddict')
-    install_requires.append('unittest2')
-
+    install_requires.extend(('ordereddict', 'unittest2'))
   setup(
       name='protobuf',
       version=GetVersion(),

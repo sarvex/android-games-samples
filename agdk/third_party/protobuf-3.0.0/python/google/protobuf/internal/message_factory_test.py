@@ -108,18 +108,18 @@ class MessageFactoryTest(unittest.TestCase):
     for _ in range(2):
       messages = message_factory.GetMessages([self.factory_test1_fd,
                                               self.factory_test2_fd])
-      self.assertTrue(
-          set(['google.protobuf.python.internal.Factory2Message',
-               'google.protobuf.python.internal.Factory1Message'],
-             ).issubset(set(messages.keys())))
+      self.assertTrue({
+          'google.protobuf.python.internal.Factory2Message',
+          'google.protobuf.python.internal.Factory1Message',
+      }.issubset(set(messages.keys())))
       self._ExerciseDynamicClass(
           messages['google.protobuf.python.internal.Factory2Message'])
-      self.assertTrue(
-          set(['google.protobuf.python.internal.Factory2Message.one_more_field',
-               'google.protobuf.python.internal.another_field'],
-             ).issubset(
-                 set(messages['google.protobuf.python.internal.Factory1Message']
-                     ._extensions_by_name.keys())))
+      self.assertTrue({
+          'google.protobuf.python.internal.Factory2Message.one_more_field',
+          'google.protobuf.python.internal.another_field',
+      }.issubset(
+          set(messages['google.protobuf.python.internal.Factory1Message'].
+              _extensions_by_name.keys())))
       factory_msg1 = messages['google.protobuf.python.internal.Factory1Message']
       msg1 = messages['google.protobuf.python.internal.Factory1Message']()
       ext1 = factory_msg1._extensions_by_name[

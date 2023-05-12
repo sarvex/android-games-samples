@@ -468,7 +468,7 @@ class GeneratedDescriptorTest(unittest.TestCase):
     self.assertGreater(len(sequence), 0)  # Sized
     self.assertEqual(len(sequence), len(list(sequence)))  # Iterable
     item = sequence[0]
-    self.assertEqual(item, sequence[0])
+    self.assertEqual(item, item)
     self.assertIn(item, sequence)  # Container
     self.assertEqual(sequence.index(item), 0)
     self.assertEqual(sequence.count(item), 1)

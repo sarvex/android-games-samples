@@ -148,7 +148,7 @@ class MacroCollection(object):
     Raises:
       PDDMError if there are any issues.
     """
-    self._macros = dict()
+    self._macros = {}
     if a_file:
       self.ParseInput(a_file)
 
@@ -208,7 +208,7 @@ class MacroCollection(object):
         if directive == 'PDDM-DEFINE':
           name, args = self._ParseDefineLine(line)
           if self._macros.get(name):
-            raise PDDMError('Attempt to redefine macro: "%s"' % line)
+            raise PDDMError(f'Attempt to redefine macro: "{line}"')
           current_macro = self.MacroDefinition(name, args)
           self._macros[name] = current_macro
           continue
@@ -218,7 +218,7 @@ class MacroCollection(object):
                             ' "%s"' % line)
           current_macro = None
           continue
-        raise PDDMError('Hit a line with an unknown directive: "%s"' % line)
+        raise PDDMError(f'Hit a line with an unknown directive: "{line}"')
 
       if current_macro:
         current_macro.AppendLine(line)
@@ -237,7 +237,7 @@ class MacroCollection(object):
     match = _MACRO_RE.match(line)
     # Must match full line
     if match is None or match.group(0) != line:
-      raise PDDMError('Failed to parse macro definition: "%s"' % input_line)
+      raise PDDMError(f'Failed to parse macro definition: "{input_line}"')
     name = match.group('name')
     args_str = match.group('args').strip()
     args = []
@@ -245,11 +245,10 @@ class MacroCollection(object):
       for part in args_str.split(','):
         arg = part.strip()
         if arg == '':
-          raise PDDMError('Empty arg name in macro definition: "%s"'
-                          % input_line)
+          raise PDDMError(f'Empty arg name in macro definition: "{input_line}"')
         if not _MACRO_ARG_NAME_RE.match(arg):
-          raise PDDMError('Invalid arg name "%s" in macro definition: "%s"'
-                          % (arg, input_line))
+          raise PDDMError(
+              f'Invalid arg name "{arg}" in macro definition: "{input_line}"')
         if arg in args:
           raise PDDMError('Arg name "%s" used more than once in macro'
                           ' definition: "%s"' % (arg, input_line))
@@ -270,16 +269,14 @@ class MacroCollection(object):
     """
     match = _MACRO_RE.match(macro_ref_str)
     if match is None or match.group(0) != macro_ref_str:
-      raise PDDMError('Failed to parse macro reference: "%s"' % macro_ref_str)
+      raise PDDMError(f'Failed to parse macro reference: "{macro_ref_str}"')
     if match.group('name') not in self._macros:
-      raise PDDMError('No macro named "%s".' % match.group('name'))
+      raise PDDMError(f"""No macro named "{match.group('name')}".""")
     return self._Expand(match, [], macro_ref_str)
 
   def _FormatStack(self, macro_ref_stack):
-    result = ''
-    for _, macro_ref in reversed(macro_ref_stack):
-      result += '\n...while expanding "%s".' % macro_ref
-    return result
+    return ''.join('\n...while expanding "%s".' % macro_ref
+                   for _, macro_ref in reversed(macro_ref_stack))
 
   def _Expand(self, macro_ref_match, macro_stack, macro_ref_str=None):
     if macro_ref_str is None:
@@ -287,8 +284,9 @@ class MacroCollection(object):
     name = macro_ref_match.group('name')
     for prev_name, prev_macro_ref in macro_stack:
       if name == prev_name:
-        raise PDDMError('Found macro recusion, invoking "%s":%s' %
-                        (macro_ref_str, self._FormatStack(macro_stack)))
+        raise PDDMError(
+            f'Found macro recusion, invoking "{macro_ref_str}":{self._FormatStack(macro_stack)}'
+        )
     macro = self._macros[name]
     args_str = macro_ref_match.group('args').strip()
     args = []
@@ -325,25 +323,19 @@ class MacroCollection(object):
         if opt == 'S': # Spaces for the length
           return ' ' * len(val)
         elif opt == 'l': # Lowercase first character
-          if val:
-            return val[0].lower() + val[1:]
-          else:
-            return val
+          return val[0].lower() + val[1:] if val else val
         elif opt == 'L': # All Lowercase
           return val.lower()
         elif opt == 'u': # Uppercase first character
-          if val:
-            return val[0].upper() + val[1:]
-          else:
-            return val
+          return val[0].upper() + val[1:] if val else val
         elif opt == 'U': # All Uppercase
           return val.upper()
         else:
-          raise PDDMError('Unknown arg option "%s$%s" while expanding "%s".%s'
-                          % (match.group('name'), match.group('option'),
-                             macro_ref_to_report,
-                             self._FormatStack(macro_stack)))
+          raise PDDMError(
+              f"""Unknown arg option "{match.group('name')}${match.group('option')}" while expanding "{macro_ref_to_report}".{self._FormatStack(macro_stack)}"""
+          )
       return val
+
     # Let the regex do the work!
     macro_arg_ref_re = _MacroArgRefRe(macro.args)
     return macro_arg_ref_re.sub(_lookupArg, macro.body)
@@ -424,9 +416,7 @@ class SourceFile(object):
 
     @property
     def first_line(self):
-      if not self._lines:
-        return ''
-      return self._lines[0]
+      return '' if not self._lines else self._lines[0]
 
     @property
     def text(self):
@@ -463,8 +453,7 @@ class SourceFile(object):
       return (True, True)
 
     def HitEOF(self):
-      raise PDDMError('Hit the end of the file while in "%s".' %
-                      self.first_line)
+      raise PDDMError(f'Hit the end of the file while in "{self.first_line}".')
 
     def BindMacroCollection(self, macro_collection):
       self._macro_collection = macro_collection
@@ -601,16 +590,10 @@ class SourceFile(object):
   def ProcessContent(self, strip_expansion=False):
     """Processes the file contents."""
     self._ParseFile()
-    if strip_expansion:
-      # Without a collection the expansions become blank, removing them.
-      collection = None
-    else:
-      collection = MacroCollection()
+    collection = None if strip_expansion else MacroCollection()
     for section in self._sections:
       section.BindMacroCollection(collection)
-    result = ''
-    for section in self._sections:
-      result += section.text
+    result = ''.join(section.text for section in self._sections)
     self._processed_content = result
 
   @property

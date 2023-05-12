@@ -14,20 +14,12 @@ def add_nanopb_builders(env):
 
     # Build command that runs a test program and saves the output
     def run_test(target, source, env):
-        if len(source) > 1:
-            infile = open(str(source[1]))
-        else:
-            infile = None
-        
-        if env.has_key("COMMAND"):
-            args = [env["COMMAND"]]
-        else:
-            args = [str(source[0])]
-        
+        infile = open(str(source[1])) if len(source) > 1 else None
+        args = [env["COMMAND"]] if env.has_key("COMMAND") else [str(source[0])]
         if env.has_key('ARGS'):
             args.extend(env['ARGS'])
-        
-        print('Command line: ' + str(args))
+
+        print(f'Command line: {args}')
         pipe = subprocess.Popen(args,
                                 stdin = infile,
                                 stdout = open(str(target[0]), 'w'),
@@ -38,7 +30,7 @@ def add_nanopb_builders(env):
         else:
             print('\033[31m[FAIL]\033[0m   Program ' + args[0] + ' returned ' + str(result))
         return result
-        
+
     run_test_builder = Builder(action = run_test,
                                suffix = '.output')
     env.Append(BUILDERS = {'RunTest': run_test_builder})
@@ -46,9 +38,8 @@ def add_nanopb_builders(env):
     # Build command that decodes a message using protoc
     def decode_actions(source, target, env, for_signature):
         esc = env['ESCAPE']
-        dirs = ' '.join(['-I' + esc(env.GetBuildPath(d)) for d in env['PROTOCPATH']])
-        return '$PROTOC $PROTOCFLAGS %s --decode=%s %s <%s >%s' % (
-            dirs, env['MESSAGE'], esc(str(source[1])), esc(str(source[0])), esc(str(target[0])))
+        dirs = ' '.join([f'-I{esc(env.GetBuildPath(d))}' for d in env['PROTOCPATH']])
+        return f"$PROTOC $PROTOCFLAGS {dirs} --decode={env['MESSAGE']} {esc(str(source[1]))} <{esc(str(source[0]))} >{esc(str(target[0]))}"
 
     decode_builder = Builder(generator = decode_actions,
                              suffix = '.decoded')
@@ -57,9 +48,8 @@ def add_nanopb_builders(env):
     # Build command that encodes a message using protoc
     def encode_actions(source, target, env, for_signature):
         esc = env['ESCAPE']
-        dirs = ' '.join(['-I' + esc(env.GetBuildPath(d)) for d in env['PROTOCPATH']])
-        return '$PROTOC $PROTOCFLAGS %s --encode=%s %s <%s >%s' % (
-            dirs, env['MESSAGE'], esc(str(source[1])), esc(str(source[0])), esc(str(target[0])))
+        dirs = ' '.join([f'-I{esc(env.GetBuildPath(d))}' for d in env['PROTOCPATH']])
+        return f"$PROTOC $PROTOCFLAGS {dirs} --encode={env['MESSAGE']} {esc(str(source[1]))} <{esc(str(source[0]))} >{esc(str(target[0]))}"
 
     encode_builder = Builder(generator = encode_actions,
                              suffix = '.encoded')
@@ -90,9 +80,9 @@ def add_nanopb_builders(env):
                 if pattern.startswith('! '):
                     invert = True
                     pattern = pattern[2:]
-                
+
                 status = re.search(pattern.strip(), data, re.MULTILINE)
-                
+
                 if not status and not invert:
                     print('\033[31m[FAIL]\033[0m   Pattern not found in ' + str(source[0]) + ': ' + pattern)
                     return 1

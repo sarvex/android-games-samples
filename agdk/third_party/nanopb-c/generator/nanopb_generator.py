@@ -129,7 +129,7 @@ def varint_max_size(max_value):
     for i in range(1, 11):
         if (max_value >> (i * 7)) == 0:
             return i
-    raise ValueError("Value too large for varint: " + str(max_value))
+    raise ValueError(f"Value too large for varint: {str(max_value)}")
 
 assert varint_max_size(-1) == 10
 assert varint_max_size(0) == 1
@@ -158,25 +158,24 @@ class EncodedSize:
         elif isinstance(other, EncodedSize):
             return EncodedSize(self.value + other.value, self.symbols + other.symbols)
         else:
-            raise ValueError("Cannot add size: " + repr(other))
+            raise ValueError(f"Cannot add size: {repr(other)}")
 
     def __mul__(self, other):
         if isinstance(other, int):
-            return EncodedSize(self.value * other, [str(other) + '*' + s for s in self.symbols])
+            return EncodedSize(
+                self.value * other, [f'{str(other)}*{s}' for s in self.symbols]
+            )
         else:
-            raise ValueError("Cannot multiply size: " + repr(other))
+            raise ValueError(f"Cannot multiply size: {repr(other)}")
 
     def __str__(self):
         if not self.symbols:
             return str(self.value)
         else:
-            return '(' + str(self.value) + ' + ' + ' + '.join(self.symbols) + ')'
+            return f'({str(self.value)} + ' + ' + '.join(self.symbols) + ')'
 
     def upperlimit(self):
-        if not self.symbols:
-            return self.value
-        else:
-            return 2**32 - 1
+        return self.value if not self.symbols else 2**32 - 1
 
 class Enum:
     def __init__(self, names, desc, enum_options):
@@ -194,13 +193,10 @@ class Enum:
         self.packed = enum_options.packed_enum
 
     def has_negative(self):
-        for n, v in self.values:
-            if v < 0:
-                return True
-        return False
+        return any(v < 0 for n, v in self.values)
 
     def encoded_size(self):
-        return max([varint_max_size(v) for n,v in self.values])
+        return max(varint_max_size(v) for n,v in self.values)
 
     def __str__(self):
         result = 'typedef enum _%s {\n' % self.names
@@ -210,7 +206,7 @@ class Enum:
         if self.packed:
             result += ' pb_packed'
 
-        result += ' %s;' % self.names
+        result += f' {self.names};'
 
         result += '\n#define _%s_MIN %s' % (self.names, self.values[0][0])
         result += '\n#define _%s_MAX %s' % (self.names, self.values[-1][0])
@@ -267,7 +263,6 @@ class Field:
     def __init__(self, struct_name, desc, field_options):
         '''desc is FieldDescriptorProto'''
         self.tag = desc.number
-        self.struct_name = struct_name
         self.union_name = None
         self.name = desc.name
         self.default = None
@@ -285,6 +280,7 @@ class Field:
             field_options.type = nanopb_pb2.FT_STATIC
             field_options.fixed_length = True
 
+        self.struct_name = struct_name
         # Parse field options
         if field_options.HasField("max_size"):
             self.max_size = field_options.max_size
@@ -326,7 +322,6 @@ class Field:
         if desc.type == FieldD.TYPE_BYTES and self.max_size is None:
             can_be_static = False
 
-        # Decide how the field data will be allocated
         if field_options.type == nanopb_pb2.FT_DEFAULT:
             if can_be_static:
                 field_options.type = nanopb_pb2.FT_STATIC
@@ -334,12 +329,14 @@ class Field:
                 field_options.type = nanopb_pb2.FT_CALLBACK
 
         if field_options.type == nanopb_pb2.FT_STATIC and not can_be_static:
-            raise Exception("Field '%s' is defined as static, but max_size or "
-                            "max_count is not given." % self.name)
-        
+            raise Exception(
+                f"Field '{self.name}' is defined as static, but max_size or max_count is not given."
+            )
+
         if field_options.fixed_count and self.max_count is None:
-            raise Exception("Field '%s' is defined as fixed count, "
-                            "but max_count is not given." % self.name)
+            raise Exception(
+                f"Field '{self.name}' is defined as fixed count, but max_count is not given."
+            )
 
         if field_options.type == nanopb_pb2.FT_STATIC:
             self.allocation = 'STATIC'
@@ -357,8 +354,8 @@ class Field:
             # Override the field size if user wants to use smaller integers
             if isa and field_options.int_size != nanopb_pb2.IS_DEFAULT:
                 self.ctype = intsizes[field_options.int_size]
-                if desc.type == FieldD.TYPE_UINT32 or desc.type == FieldD.TYPE_UINT64:
-                    self.ctype = 'u' + self.ctype;
+                if desc.type in [FieldD.TYPE_UINT32, FieldD.TYPE_UINT64]:
+                    self.ctype = f'u{self.ctype}';
         elif desc.type == FieldD.TYPE_ENUM:
             self.pbtype = 'ENUM'
             self.ctype = names_from_type_name(desc.type_name)
@@ -377,8 +374,9 @@ class Field:
                 self.pbtype = 'FIXED_LENGTH_BYTES'
 
                 if self.max_size is None:
-                    raise Exception("Field '%s' is defined as fixed length, "
-                                    "but max_size is not given." % self.name)
+                    raise Exception(
+                        f"Field '{self.name}' is defined as fixed length, but max_size is not given."
+                    )
 
                 self.enc_size = varint_max_size(self.max_size) + self.max_size
                 self.ctype = 'pb_byte_t'
@@ -401,47 +399,44 @@ class Field:
 
     def __str__(self):
         result = ''
-        if self.allocation == 'POINTER':
+        if self.allocation == 'CALLBACK':
+            result += f'    pb_callback_t {self.name};'
+        elif self.allocation == 'POINTER':
             if self.rules == 'REPEATED':
-                result += '    pb_size_t ' + self.name + '_count;\n'
+                result += f'    pb_size_t {self.name}' + '_count;\n'
 
             if self.pbtype == 'MESSAGE':
                 # Use struct definition, so recursive submessages are possible
-                result += '    struct _%s *%s;' % (self.ctype, self.name)
+                result += f'    struct _{self.ctype} *{self.name};'
             elif self.pbtype == 'FIXED_LENGTH_BYTES':
                 # Pointer to fixed size array
-                result += '    %s (*%s)%s;' % (self.ctype, self.name, self.array_decl)
+                result += f'    {self.ctype} (*{self.name}){self.array_decl};'
             elif self.rules == 'REPEATED' and self.pbtype in ['STRING', 'BYTES']:
                 # String/bytes arrays need to be defined as pointers to pointers
-                result += '    %s **%s;' % (self.ctype, self.name)
+                result += f'    {self.ctype} **{self.name};'
             else:
-                result += '    %s *%s;' % (self.ctype, self.name)
-        elif self.allocation == 'CALLBACK':
-            result += '    pb_callback_t %s;' % self.name
+                result += f'    {self.ctype} *{self.name};'
         else:
             if self.rules == 'OPTIONAL' and self.allocation == 'STATIC':
-                result += '    bool has_' + self.name + ';\n'
+                result += f'    bool has_{self.name}' + ';\n'
             elif (self.rules == 'REPEATED' and
                   self.allocation == 'STATIC' and
                   not self.fixed_count):
-                result += '    pb_size_t ' + self.name + '_count;\n'
-            result += '    %s %s%s;' % (self.ctype, self.name, self.array_decl)
+                result += f'    pb_size_t {self.name}' + '_count;\n'
+            result += f'    {self.ctype} {self.name}{self.array_decl};'
         return result
 
     def types(self):
         '''Return definitions for any special types this field might need.'''
-        if self.pbtype == 'BYTES' and self.allocation == 'STATIC':
-            result = 'typedef PB_BYTES_ARRAY_T(%d) %s;\n' % (self.max_size, self.ctype)
-        else:
-            result = ''
-        return result
+        return (
+            'typedef PB_BYTES_ARRAY_T(%d) %s;\n' % (self.max_size, self.ctype)
+            if self.pbtype == 'BYTES' and self.allocation == 'STATIC'
+            else ''
+        )
 
     def get_dependencies(self):
         '''Get list of type names used by this field.'''
-        if self.allocation == 'STATIC':
-            return [str(self.ctype)]
-        else:
-            return []
+        return [str(self.ctype)] if self.allocation == 'STATIC' else []
 
     def get_initializer(self, null_init, inner_init_only = False):
         '''Return literal expression for this field's default value.
@@ -451,10 +446,11 @@ class Field:
 
         inner_init = None
         if self.pbtype == 'MESSAGE':
-            if null_init:
-                inner_init = '%s_init_zero' % self.ctype
-            else:
-                inner_init = '%s_init_default' % self.ctype
+            inner_init = (
+                f'{self.ctype}_init_zero'
+                if null_init
+                else f'{self.ctype}_init_default'
+            )
         elif self.default is None or null_init:
             if self.pbtype == 'STRING':
                 inner_init = '""'
@@ -463,63 +459,51 @@ class Field:
             elif self.pbtype == 'FIXED_LENGTH_BYTES':
                 inner_init = '{0}'
             elif self.pbtype in ('ENUM', 'UENUM'):
-                inner_init = '_%s_MIN' % self.ctype
+                inner_init = f'_{self.ctype}_MIN'
             else:
                 inner_init = '0'
-        else:
-            if self.pbtype == 'STRING':
-                data = codecs.escape_encode(self.default.encode('utf-8'))[0]
-                inner_init = '"' + data.decode('ascii') + '"'
-            elif self.pbtype == 'BYTES':
-                data = codecs.escape_decode(self.default)[0]
-                data = ["0x%02x" % c for c in bytearray(data)]
-                if len(data) == 0:
-                    inner_init = '{0, {0}}'
-                else:
-                    inner_init = '{%d, {%s}}' % (len(data), ','.join(data))
-            elif self.pbtype == 'FIXED_LENGTH_BYTES':
-                data = codecs.escape_decode(self.default)[0]
-                data = ["0x%02x" % c for c in bytearray(data)]
-                if len(data) == 0:
-                    inner_init = '{0}'
-                else:
-                    inner_init = '{%s}' % ','.join(data)
-            elif self.pbtype in ['FIXED32', 'UINT32']:
-                inner_init = str(self.default) + 'u'
-            elif self.pbtype in ['FIXED64', 'UINT64']:
-                inner_init = str(self.default) + 'ull'
-            elif self.pbtype in ['SFIXED64', 'INT64']:
-                inner_init = str(self.default) + 'll'
+        elif self.pbtype == 'STRING':
+            data = codecs.escape_encode(self.default.encode('utf-8'))[0]
+            inner_init = '"' + data.decode('ascii') + '"'
+        elif self.pbtype == 'BYTES':
+            data = codecs.escape_decode(self.default)[0]
+            if data := ["0x%02x" % c for c in bytearray(data)]:
+                inner_init = '{%d, {%s}}' % (len(data), ','.join(data))
             else:
-                inner_init = str(self.default)
+                inner_init = '{0, {0}}'
+        elif self.pbtype == 'FIXED_LENGTH_BYTES':
+            data = codecs.escape_decode(self.default)[0]
+            data = ["0x%02x" % c for c in bytearray(data)]
+            inner_init = '{0}' if not data else '{%s}' % ','.join(data)
+        elif self.pbtype in ['FIXED32', 'UINT32']:
+            inner_init = f'{str(self.default)}u'
+        elif self.pbtype in ['FIXED64', 'UINT64']:
+            inner_init = f'{str(self.default)}ull'
+        elif self.pbtype in ['SFIXED64', 'INT64']:
+            inner_init = f'{str(self.default)}ll'
+        else:
+            inner_init = str(self.default)
 
         if inner_init_only:
             return inner_init
 
         outer_init = None
-        if self.allocation == 'STATIC':
-            if self.rules == 'REPEATED':
+        if self.allocation == 'CALLBACK':
+            outer_init = 'NULL' if self.pbtype == 'EXTENSION' else '{{NULL}, NULL}'
+        elif self.allocation == 'POINTER':
+            outer_init = '0, NULL' if self.rules == 'REPEATED' else 'NULL'
+        elif self.allocation == 'STATIC':
+            if self.rules == 'OPTIONAL':
+                outer_init = f'false, {inner_init}'
+            elif self.rules == 'REPEATED':
                 outer_init = ''
                 if not self.fixed_count:
                     outer_init += '0, '
                 outer_init += '{'
                 outer_init += ', '.join([inner_init] * self.max_count)
                 outer_init += '}'
-            elif self.rules == 'OPTIONAL':
-                outer_init = 'false, ' + inner_init
             else:
                 outer_init = inner_init
-        elif self.allocation == 'POINTER':
-            if self.rules == 'REPEATED':
-                outer_init = '0, NULL'
-            else:
-                outer_init = 'NULL'
-        elif self.allocation == 'CALLBACK':
-            if self.pbtype == 'EXTENSION':
-                outer_init = 'NULL'
-            else:
-                outer_init = '{{NULL}, NULL}'
-
         return outer_init
 
     def default_decl(self, declaration_only = False):
@@ -531,26 +515,27 @@ class Field:
         default = self.get_initializer(False, True)
         array_decl = ''
 
-        if self.pbtype == 'STRING':
-            if self.allocation != 'STATIC':
-                return None # Not implemented
+        if (
+            self.pbtype == 'BYTES'
+            and self.allocation != 'STATIC'
+            or self.pbtype != 'BYTES'
+            and self.pbtype in ['STRING', 'FIXED_LENGTH_BYTES']
+            and self.allocation != 'STATIC'
+        ):
+            return None # Not implemented
+        elif self.pbtype != 'BYTES' and self.pbtype in [
+            'STRING',
+            'FIXED_LENGTH_BYTES',
+        ]:
             array_decl = '[%d]' % self.max_size
-        elif self.pbtype == 'BYTES':
-            if self.allocation != 'STATIC':
-                return None # Not implemented
-        elif self.pbtype == 'FIXED_LENGTH_BYTES':
-            if self.allocation != 'STATIC':
-                return None # Not implemented
-            array_decl = '[%d]' % self.max_size
-
         if declaration_only:
-            return 'extern const %s %s_default%s;' % (ctype, self.struct_name + self.name, array_decl)
+            return f'extern const {ctype} {self.struct_name + self.name}_default{array_decl};'
         else:
-            return 'const %s %s_default%s = %s;' % (ctype, self.struct_name + self.name, array_decl, default)
+            return f'const {ctype} {self.struct_name + self.name}_default{array_decl} = {default};'
 
     def tags(self):
         '''Return the #define for the tag number of this field.'''
-        identifier = '%s_%s_tag' % (self.struct_name, self.name)
+        identifier = f'{self.struct_name}_{self.name}_tag'
         return '#define %-40s %d\n' % (identifier, self.tag)
 
     def pb_field_t(self, prev_field_name, union_index = None):
@@ -561,9 +546,9 @@ class Field:
 
         if self.rules == 'ONEOF':
             if self.anonymous:
-                result = '    PB_ANONYMOUS_ONEOF_FIELD(%s, ' % self.union_name
+                result = f'    PB_ANONYMOUS_ONEOF_FIELD({self.union_name}, '
             else:
-                result = '    PB_ONEOF_FIELD(%s, ' % self.union_name
+                result = f'    PB_ONEOF_FIELD({self.union_name}, '
         elif self.fixed_count:
             result = '    PB_REPEATED_FIXED_COUNT('
         else:
@@ -572,7 +557,7 @@ class Field:
         result += '%3d, ' % self.tag
         result += '%-8s, ' % self.pbtype
         if not self.fixed_count:
-            result += '%s, ' % self.rules
+            result += f'{self.rules}, '
             result += '%-8s, ' % self.allocation
 
         if union_index is not None and union_index > 0:
@@ -582,12 +567,12 @@ class Field:
         else:
             result += 'OTHER, '
 
-        result += '%s, ' % self.struct_name
-        result += '%s, ' % self.name
-        result += '%s, ' % (prev_field_name or self.name)
+        result += f'{self.struct_name}, '
+        result += f'{self.name}, '
+        result += f'{prev_field_name or self.name}, '
 
         if self.pbtype == 'MESSAGE':
-            result += '&%s_fields)' % self.submsgname
+            result += f'&{self.submsgname}_fields)'
         elif self.default is None:
             result += '0)'
         elif self.pbtype in ['BYTES', 'STRING', 'FIXED_LENGTH_BYTES'] and self.allocation != 'STATIC':
@@ -595,7 +580,7 @@ class Field:
         elif self.rules == 'OPTEXT':
             result += '0)' # Default value for extensions is not implemented
         else:
-            result += '&%s_default)' % (self.struct_name + self.name)
+            result += f'&{self.struct_name + self.name}_default)'
 
         return result
 
@@ -607,22 +592,27 @@ class Field:
         Returns numeric value or a C-expression for assert.'''
         check = []
         if self.pbtype == 'MESSAGE' and self.allocation == 'STATIC':
-            if self.rules == 'REPEATED':
-                check.append('pb_membersize(%s, %s[0])' % (self.struct_name, self.name))
+            if (
+                self.rules == 'ONEOF'
+                and self.anonymous
+                or self.rules not in ['ONEOF', 'REPEATED']
+            ):
+                check.append(f'pb_membersize({self.struct_name}, {self.name})')
             elif self.rules == 'ONEOF':
-                if self.anonymous:
-                    check.append('pb_membersize(%s, %s)' % (self.struct_name, self.name))
-                else:
-                    check.append('pb_membersize(%s, %s.%s)' % (self.struct_name, self.union_name, self.name))
+                check.append(
+                    f'pb_membersize({self.struct_name}, {self.union_name}.{self.name})'
+                )
             else:
-                check.append('pb_membersize(%s, %s)' % (self.struct_name, self.name))
+                check.append(f'pb_membersize({self.struct_name}, {self.name}[0])')
         elif self.pbtype == 'BYTES' and self.allocation == 'STATIC':
             if self.max_size > 251:
-                check.append('pb_membersize(%s, %s)' % (self.struct_name, self.name))
+                check.append(f'pb_membersize({self.struct_name}, {self.name})')
 
-        return FieldMaxSize([self.tag, self.max_size, self.max_count],
-                            check,
-                            ('%s.%s' % (self.struct_name, self.name)))
+        return FieldMaxSize(
+            [self.tag, self.max_size, self.max_count],
+            check,
+            f'{self.struct_name}.{self.name}',
+        )
 
     def encoded_size(self, dependencies):
         '''Return the maximum size that this field can take when encoded,
@@ -647,7 +637,7 @@ class Field:
                 # file, and it or its .options could not be found.
                 # Instead of direct numeric value, reference the size that
                 # has been #defined in the other file.
-                encsize = EncodedSize(self.submsgname + 'size')
+                encsize = EncodedSize(f'{self.submsgname}size')
 
                 # We will have to make a conservative assumption on the length
                 # prefix size, though.
@@ -662,8 +652,9 @@ class Field:
                 encsize = 10
 
         elif self.enc_size is None:
-            raise RuntimeError("Could not determine encoded size for %s.%s"
-                               % (self.struct_name, self.name))
+            raise RuntimeError(
+                f"Could not determine encoded size for {self.struct_name}.{self.name}"
+            )
         else:
             encsize = EncodedSize(self.enc_size)
 
@@ -722,7 +713,7 @@ class ExtensionField(Field):
     def __init__(self, struct_name, desc, field_options):
         self.fullname = struct_name + desc.name
         self.extendee_name = names_from_type_name(desc.extendee)
-        Field.__init__(self, self.fullname + 'struct', desc, field_options)
+        Field.__init__(self, f'{self.fullname}struct', desc, field_options)
 
         if self.rules != 'OPTIONAL':
             self.skip = True
@@ -732,7 +723,7 @@ class ExtensionField(Field):
 
     def tags(self):
         '''Return the #define for the tag number of this field.'''
-        identifier = '%s_tag' % self.fullname
+        identifier = f'{self.fullname}_tag'
         return '#define %-40s %d\n' % (identifier, self.tag)
 
     def extension_decl(self):
@@ -751,8 +742,7 @@ class ExtensionField(Field):
         if self.skip:
             return ''
 
-        result  = 'typedef struct {\n'
-        result += str(self)
+        result = 'typedef struct {\n' + str(self)
         result += '\n} %s;\n\n' % self.struct_name
         result += ('static const pb_field_t %s_field = \n  %s;\n\n' %
                     (self.fullname, self.pb_field_t(None)))

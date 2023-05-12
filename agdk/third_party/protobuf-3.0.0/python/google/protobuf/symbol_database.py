@@ -145,8 +145,7 @@ class SymbolDatabase(message_factory.MessageFactory):
       """Walk a message Descriptor and recursively yields all message names."""
       yield desc.full_name
       for msg_desc in desc.nested_types:
-        for full_name in _GetAllMessageNames(msg_desc):
-          yield full_name
+        yield from _GetAllMessageNames(msg_desc)
 
     result = {}
     for file_name in files:

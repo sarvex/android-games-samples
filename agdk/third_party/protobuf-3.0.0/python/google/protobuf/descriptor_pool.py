@@ -202,7 +202,7 @@ class DescriptorPool(object):
       else:
         raise error
     if not file_proto:
-      raise KeyError('Cannot find a file named %s' % file_name)
+      raise KeyError(f'Cannot find a file named {file_name}')
     return self._ConvertFileProtoToFileDescriptor(file_proto)
 
   def FindFileContainingSymbol(self, symbol):
@@ -237,7 +237,7 @@ class DescriptorPool(object):
       else:
         raise error
     if not file_proto:
-      raise KeyError('Cannot find a file containing %s' % symbol)
+      raise KeyError(f'Cannot find a file containing {symbol}')
     return self._ConvertFileProtoToFileDescriptor(file_proto)
 
   def FindMessageTypeByName(self, full_name):
@@ -423,11 +423,7 @@ class DescriptorPool(object):
     else:
       desc_name = desc_proto.name
 
-    if file_desc is None:
-      file_name = None
-    else:
-      file_name = file_desc.name
-
+    file_name = None if file_desc is None else file_desc.name
     if scope is None:
       scope = {}
 
@@ -449,10 +445,7 @@ class DescriptorPool(object):
                                    index, None, [], desc.options)
         for index, desc in enumerate(desc_proto.oneof_decl)]
     extension_ranges = [(r.start, r.end) for r in desc_proto.extension_range]
-    if extension_ranges:
-      is_extendable = True
-    else:
-      is_extendable = False
+    is_extendable = bool(extension_ranges)
     desc = descriptor.Descriptor(
         name=desc_proto.name,
         full_name=desc_name,
@@ -504,11 +497,7 @@ class DescriptorPool(object):
     else:
       enum_name = enum_proto.name
 
-    if file_desc is None:
-      file_name = None
-    else:
-      file_name = file_desc.name
-
+    file_name = None if file_desc is None else file_desc.name
     values = [self._MakeEnumValueDescriptor(value, index)
               for index, value in enumerate(enum_proto.value)]
     desc = descriptor.EnumDescriptor(name=enum_proto.name,
@@ -518,7 +507,7 @@ class DescriptorPool(object):
                                      values=values,
                                      containing_type=containing_type,
                                      options=enum_proto.options)
-    scope['.%s' % enum_name] = desc
+    scope[f'.{enum_name}'] = desc
     self._enum_descriptors[enum_name] = desc
     return desc
 
@@ -619,8 +608,10 @@ class DescriptorPool(object):
     field_desc.cpp_type = descriptor.FieldDescriptor.ProtoTypeToCppProtoType(
         field_proto.type)
 
-    if (field_proto.type == descriptor.FieldDescriptor.TYPE_MESSAGE
-        or field_proto.type == descriptor.FieldDescriptor.TYPE_GROUP):
+    if field_proto.type in [
+        descriptor.FieldDescriptor.TYPE_MESSAGE,
+        descriptor.FieldDescriptor.TYPE_GROUP,
+    ]:
       field_desc.message_type = desc
 
     if field_proto.type == descriptor.FieldDescriptor.TYPE_ENUM:
@@ -631,8 +622,10 @@ class DescriptorPool(object):
       field_desc.default_value = []
     elif field_proto.HasField('default_value'):
       field_desc.has_default_value = True
-      if (field_proto.type == descriptor.FieldDescriptor.TYPE_DOUBLE or
-          field_proto.type == descriptor.FieldDescriptor.TYPE_FLOAT):
+      if field_proto.type in [
+          descriptor.FieldDescriptor.TYPE_DOUBLE,
+          descriptor.FieldDescriptor.TYPE_FLOAT,
+      ]:
         field_desc.default_value = float(field_proto.default_value)
       elif field_proto.type == descriptor.FieldDescriptor.TYPE_STRING:
         field_desc.default_value = field_proto.default_value
@@ -649,8 +642,10 @@ class DescriptorPool(object):
         field_desc.default_value = int(field_proto.default_value)
     else:
       field_desc.has_default_value = False
-      if (field_proto.type == descriptor.FieldDescriptor.TYPE_DOUBLE or
-          field_proto.type == descriptor.FieldDescriptor.TYPE_FLOAT):
+      if field_proto.type in [
+          descriptor.FieldDescriptor.TYPE_DOUBLE,
+          descriptor.FieldDescriptor.TYPE_FLOAT,
+      ]:
         field_desc.default_value = 0.0
       elif field_proto.type == descriptor.FieldDescriptor.TYPE_STRING:
         field_desc.default_value = u''
@@ -707,13 +702,14 @@ class DescriptorPool(object):
     methods = [self._MakeMethodDescriptor(method_proto, service_name, package,
                                           scope, index)
                for index, method_proto in enumerate(service_proto.method)]
-    desc = descriptor.ServiceDescriptor(name=service_proto.name,
-                                        full_name=service_name,
-                                        index=service_index,
-                                        methods=methods,
-                                        options=service_proto.options,
-                                        file=file_desc)
-    return desc
+    return descriptor.ServiceDescriptor(
+        name=service_proto.name,
+        full_name=service_name,
+        index=service_index,
+        methods=methods,
+        options=service_proto.options,
+        file=file_desc,
+    )
 
   def _MakeMethodDescriptor(self, method_proto, service_name, package, scope,
                             index):
@@ -753,8 +749,7 @@ class DescriptorPool(object):
 
     for desc in descriptors:
       yield (_PrefixWithDot(desc.full_name), desc)
-      for symbol in self._ExtractSymbols(desc.nested_types):
-        yield symbol
+      yield from self._ExtractSymbols(desc.nested_types)
       for enum in desc.enum_types:
         yield (_PrefixWithDot(enum.full_name), enum)
 
@@ -771,8 +766,7 @@ class DescriptorPool(object):
     for dependency in dependencies:
       dep_desc = self.FindFileByName(dependency)
       yield dep_desc
-      for parent_dep in dep_desc.dependencies:
-        yield parent_dep
+      yield from dep_desc.dependencies
 
   def _GetTypeFromScope(self, package, type_name, scope):
     """Finds a given type name in the current scope.
@@ -798,7 +792,7 @@ class DescriptorPool(object):
 
 
 def _PrefixWithDot(name):
-  return name if name.startswith('.') else '.%s' % name
+  return name if name.startswith('.') else f'.{name}'
 
 
 if _USE_C_DESCRIPTORS:

@@ -163,8 +163,8 @@ class JsonFormatTest(JsonFormatBase):
     if sys.version_info[0] < 3:
       message.string_value = '&\n<\"\r>\b\t\f\\\001/\xe2\x80\xa8\xe2\x80\xa9'
     else:
-      message.string_value = '&\n<\"\r>\b\t\f\\\001/'
-      message.string_value += (b'\xe2\x80\xa8\xe2\x80\xa9').decode('utf-8')
+      message.string_value = '&\n<\"\r>\b\t\f\\\001/' + (
+          b'\xe2\x80\xa8\xe2\x80\xa9').decode('utf-8')
     self.assertEqual(
         json_format.MessageToJson(message),
         '{\n  "stringValue": '
@@ -487,10 +487,11 @@ class JsonFormatTest(JsonFormatBase):
     message.Clear()
     message.value.Pack(test_message)
     self.assertEqual(
-        json_format.MessageToJson(message, False)[0:68],
+        json_format.MessageToJson(message, False)[:68],
         '{\n'
         '  "value": {\n'
-        '    "@type": "type.googleapis.com/proto3.TestMessage"')
+        '    "@type": "type.googleapis.com/proto3.TestMessage"',
+    )
 
   def testWellKnownInAnyMessage(self):
     message = any_pb2.Any()

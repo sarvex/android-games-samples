@@ -56,18 +56,17 @@ def _detect_protoc(env):
     if env.has_key('PROTOC'):
         # Use protoc defined by user
         return env['PROTOC']
-    
+
     n = _detect_nanopb(env)
     p1 = os.path.join(n, 'generator-bin', 'protoc' + env['PROGSUFFIX'])
     if os.path.exists(p1):
         # Use protoc bundled with binary package
         return env['ESCAPE'](p1)
-    
-    p = env.WhereIs('protoc')
-    if p:
+
+    if p := env.WhereIs('protoc'):
         # Use protoc from path
         return env['ESCAPE'](p)
-    
+
     raise SCons.Errors.StopError(NanopbWarning,
         "Could not find the protoc compiler")
 
@@ -91,16 +90,16 @@ def _detect_protocflags(env):
 
 def _nanopb_proto_actions(source, target, env, for_signature):
     esc = env['ESCAPE']
-    dirs = ' '.join(['-I' + esc(env.GetBuildPath(d)) for d in env['PROTOCPATH']])
-    return '$PROTOC $PROTOCFLAGS %s --nanopb_out=. %s' % (dirs, esc(str(source[0])))
+    dirs = ' '.join([f'-I{esc(env.GetBuildPath(d))}' for d in env['PROTOCPATH']])
+    return f'$PROTOC $PROTOCFLAGS {dirs} --nanopb_out=. {esc(str(source[0]))}'
 
 def _nanopb_proto_emitter(target, source, env):
     basename = os.path.splitext(str(source[0]))[0]
-    target.append(basename + '.pb.h')
-    
-    if os.path.exists(basename + '.options'):
-        source.append(basename + '.options')
-    
+    target.append(f'{basename}.pb.h')
+
+    if os.path.exists(f'{basename}.options'):
+        source.append(f'{basename}.options')
+
     return target, source
 
 _nanopb_proto_builder = SCons.Builder.Builder(

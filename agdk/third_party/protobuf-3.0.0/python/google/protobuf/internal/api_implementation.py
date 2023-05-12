@@ -31,6 +31,7 @@
 """Determine which implementation of the protobuf API is used in this process.
 """
 
+
 import os
 import warnings
 import sys
@@ -61,11 +62,8 @@ if _api_version < 0:  # Still unspecified?
     del _use_fast_cpp_protos
     _api_version = 2
   except ImportError:
-    if _proto_extension_modules_exist_in_build:
-      if sys.version_info[0] >= 3:  # Python 3 defaults to C++ impl v2.
-        _api_version = 2
-      # TODO(b/17427486): Make Python 2 default to C++ impl v2.
-
+    if _proto_extension_modules_exist_in_build and sys.version_info[0] >= 3:
+      _api_version = 2
 _default_implementation_type = (
     'python' if _api_version <= 0 else 'cpp')
 

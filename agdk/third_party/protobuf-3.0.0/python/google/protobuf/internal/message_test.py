@@ -733,7 +733,7 @@ class MessageTest(unittest.TestCase):
     """Assigning a byte string to a string field should result
     in the value being converted to a Unicode string."""
     m = message_module.TestAllTypes()
-    m.optional_string = str('')
+    m.optional_string = ''
     self.assertIsInstance(m.optional_string, six.text_type)
 
   def testLongValuedSlice(self, message_module):
@@ -757,10 +757,9 @@ class MessageTest(unittest.TestCase):
     """This didn't use to work in the v2 C++ implementation."""
     m = message_module.TestAllTypes()
     with self.assertRaises(NameError) as _:
-      m.repeated_int32.extend(a for i in range(10))  # pylint: disable=undefined-variable
+      m.repeated_int32.extend(a for _ in range(10))
     with self.assertRaises(NameError) as _:
-      m.repeated_nested_enum.extend(
-          a for i in range(10))  # pylint: disable=undefined-variable
+      m.repeated_nested_enum.extend(a for _ in range(10))
 
   FALSY_VALUES = [None, False, 0, 0.0, b'', u'', bytearray(), [], {}, set()]
 
@@ -1561,12 +1560,9 @@ class Proto3Test(unittest.TestCase):
     msg.map_int32_foreign_message[5].c = 5
 
     with self.assertRaises(RuntimeError):
-      for key in string_string_iter:
-        pass
-
+      pass
     with self.assertRaises(RuntimeError):
-      for key in int32_foreign_iter:
-        pass
+      pass
 
   def testSubmessageMap(self):
     msg = map_unittest_pb2.TestMap()
@@ -1680,14 +1676,11 @@ class Proto3Test(unittest.TestCase):
 
     msg.ClearField('map_int32_int32')
     with self.assertRaises(RuntimeError):
-      for _ in it:
-        pass
-
+      pass
     it = iter(msg.map_int32_foreign_message)
     msg.ClearField('map_int32_foreign_message')
     with self.assertRaises(RuntimeError):
-      for _ in it:
-        pass
+      pass
 
   def testMapDelete(self):
     msg = map_unittest_pb2.TestMap()
@@ -1725,8 +1718,10 @@ class ValidTypeNamesTest(unittest.TestCase):
   def assertImportFromName(self, msg, base_name):
     # Parse <type 'module.class_name'> to extra 'some.name' as a string.
     tp_name = str(type(msg)).split("'")[1]
-    valid_names = ('Repeated%sContainer' % base_name,
-                   'Repeated%sFieldContainer' % base_name)
+    valid_names = (
+        f'Repeated{base_name}Container',
+        f'Repeated{base_name}FieldContainer',
+    )
     self.assertTrue(any(tp_name.endswith(v) for v in valid_names),
                     '%r does end with any of %r' % (tp_name, valid_names))
 
